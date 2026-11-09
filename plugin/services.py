@@ -954,6 +954,16 @@ class Services:
         if path.exists():
             if collision == 'error':
                 raise ApiError('conflict', 'Media filename already exists.')
+            names = os.listdir(path.parent)
+            if filename not in names:
+                # Anki may return the requested case for an existing file on
+                # macOS. Keep the stored spelling in references synced to other devices.
+                folded = filename.casefold()
+                for name in names:
+                    normalized = unicodedata.normalize('NFC', name)
+                    if normalized.casefold() == folded and path.samefile(path.with_name(name)):
+                        filename = normalized
+                        break
             if collision == 'replace' and path.read_bytes() != data:
                 # Replacement callers journal the original before this native write.
                 self.col.media.trash_files([filename])

@@ -60,7 +60,8 @@ class WebClient:
                 pass
             except HttpError as error:
                 self.writeBuff = ('HTTP/1.1 ' + error.status + '\r\nContent-Length: 0\r\n\r\n').encode()
-            except (ValueError, UnicodeError):
+            except (ValueError, UnicodeError, RecursionError):
+                self.pending = False
                 self.writeBuff = b'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n'
             except OSError:
                 self.close()
@@ -172,13 +173,15 @@ class WebServer:
                 from .legacy import legacy_request
                 params = legacy_request(params)
                 jsonschema.validate(params, request_schema)
-        except (ValueError, UnicodeError, jsonschema.ValidationError, ApiError) as error:
+        except (ValueError, UnicodeError, jsonschema.ValidationError, ApiError, RecursionError) as error:
             if not allowed:
                 return response(None, '403 Forbidden', empty=True)
             if rpc:
                 return response(Dispatcher.reply(None, error=ApiError('parseError', 'Invalid JSON.')))
             if not req.body:
                 return response({'apiVersion': 'AnkiConnect v.{}'.format(util.setting('apiVersion'))})
+            if isinstance(error, RecursionError):
+                error = ValueError('JSON nesting is too deep.')
             return response(format_exception_reply(util.setting('apiVersion'), error))
         permission = isinstance(params, dict) and params.get('method' if rpc else 'action') == ('access.requestPermission' if rpc else 'requestPermission')
         if not allowed and not permission:

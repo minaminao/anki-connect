@@ -256,7 +256,11 @@ class AnkiConnect:
             elif name.startswith('gui') or name in ('version', 'requestPermission', 'apiReflect', 'getProfiles', 'getActiveProfile', 'loadProfile', 'sync', 'reloadCollection'):
                 value = Legacy(self).call(name, params)
                 def admitted(value):
-                    return value.pending.map(value.project) if isinstance(value, Accepted) and barrier else value.value if isinstance(value, Accepted) else value
+                    if not isinstance(value, Accepted):
+                        return value
+                    if barrier or name == 'sync':
+                        return value.pending.map(value.project)
+                    return value.value
                 pending = value.map(admitted) if isinstance(value, Deferred) else completed(value).map(admitted)
             else:
                 pending = self.runtime.background(lambda service: Legacy(self, service).call(name, params))

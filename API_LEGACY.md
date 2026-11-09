@@ -1863,15 +1863,15 @@ List supported legacy actions. `scopes` currently supports `"actions"`. Omit `ac
 
 ### `sync`
 
-Start one coordinated AnkiWeb sync using the active profile’s credentials and media-sync setting. A standalone reply acknowledges acceptance; `multi` waits for completion.
+Start one coordinated AnkiWeb sync using the active profile’s credentials and media-sync setting.
 
 **Parameters:** `sync()`
 
-**Returns:** null when accepted.
+**Returns:** null when the sync succeeds.
 
-**Completion:** accepted; multi awaits final.
+**Completion:** waits for the collection and any enabled media sync, both as a standalone request and in `multi`.
 
-**Behavior:** one sync workflow; no preliminary blocking sync. Later failures are tracked internally, not returned retroactively.
+**Behavior:** runs one sync workflow and returns any failure in the legacy `error` field.
 
 **v1 equivalent:** [collection.sync](API_V1.md#collectionsync).
 

@@ -1,5 +1,6 @@
 {
-    "package": "2055492159",
-    "name": "Anki-Connect",
+    "package": "minaminao_ankiconnect",
+    "name": "AnkiConnect (minaminao fork)",
+    "homepage": "https://github.com/minaminao/anki-connect",
     "conflicts": ["AnkiConnectDev"]
 }

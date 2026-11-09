@@ -33,7 +33,8 @@ def test_addon_archive_matches_native_install_requirements(tmp_path, monkeypatch
     build(source, tmp_path / 'addon.zip')
     with zipfile.ZipFile(tmp_path / 'addon.zip') as archive:
         metadata = AddonManager.readManifestFile(object.__new__(AddonManager), archive)
-        assert metadata['package'] == '2055492159'
+        addon_id = metadata['package']
+        assert addon_id == 'minaminao_ankiconnect'
         assert package_name_valid(metadata['package'])
         assert '__init__.py' in archive.namelist()
         assert not any(name.startswith('plugin/') or '__pycache__' in name for name in archive.namelist())
@@ -44,7 +45,7 @@ def test_addon_archive_matches_native_install_requirements(tmp_path, monkeypatch
     # Exercise Anki's actual local installer against an existing disposable
     # installation, including metadata and user-file preservation on upgrade.
     addons = tmp_path / 'addons'
-    installed = addons / '2055492159'
+    installed = addons / addon_id
     installed.mkdir(parents=True)
     (installed / '__init__.py').write_text('# old code\n')
     (installed / 'meta.json').write_text(json.dumps({'name': 'Old name', 'config': {'webBindPort': 9876}}))
@@ -57,8 +58,9 @@ def test_addon_archive_matches_native_install_requirements(tmp_path, monkeypatch
     monkeypatch.setattr(manager, 'deleteAddon', lambda name: shutil.rmtree(addons / name))
     result = manager.install(str(tmp_path / 'addon.zip'))
     assert isinstance(result, InstallOk), result
-    assert manager.allAddons() == ['2055492159']
-    assert manager.getConfig('2055492159')['webBindPort'] == 9876
+    assert manager.allAddons() == [addon_id]
+    assert manager.ankiweb_addons() == []
+    assert manager.getConfig(addon_id)['webBindPort'] == 9876
     assert (installed / '__init__.py').read_text() == '# entry point\n'
     assert (installed / 'user_files' / 'kept.txt').read_text() == 'user data'
 
@@ -105,6 +107,42 @@ def test_sync_respects_profile_media_setting(admitted, monkeypatch, requested, e
     assert (('media',) in calls) == (requested and enabled)
     assert pending.value == {'collectionComplete': True, 'mediaComplete': requested and enabled}
     assert not owner.runtime.lifecycle_active
+
+
+@pytest.mark.parametrize('fails', [False, True])
+def test_legacy_sync_waits_for_backend_result(admitted, monkeypatch, fails):
+    import aqt
+    from anki.sync import SyncAuth
+
+    owner, _, drain, _, _ = admitted
+    monkeypatch.setattr(aqt.mw.pm, 'sync_auth', lambda: SyncAuth(), raising=False)
+    backend = Deferred()
+    monkeypatch.setattr(owner.runtime.gui, 'collection_sync', lambda **params: backend)
+    reply = owner.handler_async({'action': 'sync', 'version': 6})
+    drain()
+    assert not reply.done
+    if fails:
+        backend.resolve(error=ApiError('ioError', 'Sync server unavailable.'))
+    else:
+        backend.resolve({'collectionComplete': True, 'mediaComplete': True})
+    drain()
+    assert reply.value == {'result': None, 'error': 'Sync server unavailable.' if fails else None}
+
+
+@pytest.mark.parametrize('path', [b'/', b'/api/v1'])
+def test_deep_json_is_rejected_before_dispatch(admitted, path):
+    from plugin.web import WebRequest, WebServer
+
+    def dispatch(*args):
+        pytest.fail('Malformed JSON reached dispatch')
+
+    body = b'[' * 10000 + b']' * 10000
+    response = WebServer(dispatch, dispatch).handlerWrapper(WebRequest(b'POST', {}, body, path))
+    result = json.loads(response.split(b'\r\n\r\n', 1)[1])
+    if path == b'/api/v1':
+        assert result['error']['code'] == -32700
+    else:
+        assert result == {'result': None, 'error': 'JSON nesting is too deep.'}
 
 
 def test_http_idle_timeout_tracks_progress_and_waits_for_accepted_work(monkeypatch):
